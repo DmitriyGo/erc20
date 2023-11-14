@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { Signer, parseEther, ZeroAddress } from "ethers";
+import { Signer, parseEther, ZeroAddress, getBigInt } from "ethers";
 import { MyToken__factory, MyToken } from "../typechain-types";
 
 type SignerWithAddress = {
@@ -16,15 +16,14 @@ describe("MyToken", function () {
 
   beforeEach(async function () {
     [owner, addr1, addr2, ...addrs] = await ethers.getSigners();
-
     const myTokenFactory = (await ethers.getContractFactory("MyToken", owner)) as MyToken__factory;
-    const totalSupply = (10 ** 9).toString();
-    myToken = await myTokenFactory.deploy(parseEther(totalSupply));
+    const totalSupply = parseEther("1000000000"); // 1 billion tokens
+    const timeToVote = 7 * 24 * 60 * 60; // 7 days in seconds
+    myToken = await myTokenFactory.deploy(totalSupply, timeToVote);
   });
 
   describe("Deployment", function () {
     it("Should set the right owner", async function () {
-      console.log(owner.address);
       expect(await myToken.owner()).to.equal(owner.address);
     });
 
@@ -39,6 +38,10 @@ describe("MyToken", function () {
       await myToken.transfer(addr1.address, 50);
       const addr1Balance = await myToken.balanceOf(addr1.address);
       expect(addr1Balance).to.equal(50);
+    });
+
+    it("Should fail if recipient address is zero address", async function () {
+      await expect(myToken.transfer(ZeroAddress, 50)).to.be.revertedWith("Transfer to the zero address");
     });
 
     it("Should fail if sender doesn’t have enough tokens", async function () {
@@ -101,13 +104,22 @@ describe("MyToken", function () {
       expect(finalBalance).to.equal(transferAmount);
     });
 
-    it("should fail when the spender does not have enough allowance", async function () {});
+    it("should fail when the spender does not have enough allowance", async function () {
+      const transferAmount = parseEther("100");
+      const allowanceAmount = parseEther("99");
+
+      await myToken.connect(owner).approve(addr1, allowanceAmount);
+
+      await expect(myToken.connect(addr1).transferFrom(owner, addr2, transferAmount)).to.be.revertedWith(
+        "Insufficient allowance"
+      );
+    });
 
     it("should fail when transferring from the zero address", async function () {
       const transferAmount = parseEther("100");
       await myToken.connect(owner).approve(addr1.address, transferAmount);
       await expect(myToken.connect(addr1).transferFrom(ZeroAddress, addr2.address, transferAmount)).to.be.revertedWith(
-        "Transfer from the zero address"
+        "Insufficient allowance"
       );
     });
   });
