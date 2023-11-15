@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
+import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 contract MyToken is IERC20, AccessControl {
     struct Vote {
-        mapping(uint256 => uint256) totalVotesForPrice; // Maps price to total tokens voting for it
+        mapping(uint256 => uint256) totalVotesForPrice;
+        mapping(address => uint256) votingBalance;
         uint256 leadingPrice;
         uint256 maxVotingPower;
         uint256 voteEndTime;
@@ -83,10 +85,17 @@ contract MyToken is IERC20, AccessControl {
     function startVote(uint256 proposedPrice) public {
         require(balanceOf(msg.sender) >= minTokenAmountToInitiateVote, "Insufficient balance to initiate vote");
 
+        if (votes.length > 0) {
+            Vote storage lastVote = votes[votes.length - 1];
+            require(lastVote.finalized, "An active vote is still ongoing");
+        }
+
         Vote storage newVote = votes.push();
         newVote.voteEndTime = block.timestamp + timeToVote;
         newVote.finalized = false;
         newVote.leadingPrice = proposedPrice;
+
+        newVote.votingBalance[msg.sender] = balanceOf(msg.sender);
         newVote.totalVotesForPrice[proposedPrice] = balanceOf(msg.sender);
 
         uint256 voteIndex = votes.length - 1;
@@ -94,12 +103,14 @@ contract MyToken is IERC20, AccessControl {
     }
 
     function vote(uint256 voteIndex, uint256 price) public {
-        require(balanceOf(msg.sender) >= minTokenAmountToVote, "Insufficient balance to vote");
+        uint256 voterBalance = balanceOf(msg.sender);
+        require(voterBalance >= minTokenAmountToVote, "Insufficient balance to vote");
         require(voteIndex < votes.length, "Invalid vote index");
         require(votes[voteIndex].voteEndTime > block.timestamp, "Voting period has ended");
         require(!votes[voteIndex].finalized, "Vote already finalized");
+        require(votes[voteIndex].votingBalance[msg.sender] == 0, "This account already participated in this voting");
 
-        uint256 voterBalance = balanceOf(msg.sender);
+        votes[voteIndex].votingBalance[msg.sender] = voterBalance;
         uint256 updatedVoteCountForPrice = votes[voteIndex].totalVotesForPrice[price] + voterBalance;
         votes[voteIndex].totalVotesForPrice[price] = updatedVoteCountForPrice;
 
@@ -130,6 +141,12 @@ contract MyToken is IERC20, AccessControl {
         require(sender != address(0), "Transfer from the zero address");
         require(recipient != address(0), "Transfer to the zero address");
         require(balanceOf(sender) >= amount, "Transfer amount exceeds balance");
+
+        if (votes.length > 0) {
+            uint256 lastVoteIndex = votes.length - 1;
+            uint256 lockedBalance = votes[lastVoteIndex].votingBalance[sender];
+            require(balanceOf(sender) - lockedBalance >= amount, "Transfer amount exceeds uncommitted balance");
+        }
 
         _balances[sender] -= amount;
         _balances[recipient] += amount;

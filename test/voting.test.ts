@@ -31,22 +31,24 @@ describe("Voting Functionality", function () {
   });
 
   it("Should allow valid voting", async function () {
+    const addr3 = addrs[0];
     const totalSupply = await myToken.totalSupply();
     await myToken.transfer(addr1.address, totalSupply / 1000n);
     await myToken.transfer(addr2.address, totalSupply / 2000n);
+    await myToken.transfer(addr3.address, totalSupply / 2000n);
 
     const proposedPrice = BigInt("1000000000000000000");
     const smallerProposedPrice = BigInt("10000000000000000");
 
     await myToken.connect(addr1).startVote(proposedPrice);
 
-    await expect(myToken.connect(addr1).vote(0, proposedPrice))
-      .to.emit(myToken, "Voted")
-      .withArgs(0, proposedPrice, await myToken.balanceOf(addr1.address), addr1.address);
-
     await expect(myToken.connect(addr2).vote(0, smallerProposedPrice))
       .to.emit(myToken, "Voted")
       .withArgs(0, smallerProposedPrice, await myToken.balanceOf(addr2.address), addr2.address);
+
+    await expect(myToken.connect(addr3).vote(0, proposedPrice))
+      .to.emit(myToken, "Voted")
+      .withArgs(0, proposedPrice, await myToken.balanceOf(addr3.address), addr3.address);
 
     await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60 + 1]);
     await ethers.provider.send("evm_mine");
