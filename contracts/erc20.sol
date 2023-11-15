@@ -20,7 +20,7 @@ contract MyToken is IERC20, AccessControl {
     uint256 public timeToVote;
     address public owner;
     Vote[] public votes;
-    
+
     uint256 private _totalSupply;
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
@@ -43,7 +43,7 @@ contract MyToken is IERC20, AccessControl {
 
         emit Transfer(address(0), msg.sender, _totalSupply);
     }
-    
+
     modifier onlyAdmin() {
         require(hasRole(ADMIN_ROLE, msg.sender), "Caller is not an admin");
         _;
@@ -80,12 +80,14 @@ contract MyToken is IERC20, AccessControl {
         return true;
     }
 
-     function startVote(uint256 proposedPrice) public {
+    function startVote(uint256 proposedPrice) public {
         require(balanceOf(msg.sender) >= minTokenAmountToInitiateVote, "Insufficient balance to initiate vote");
 
         Vote storage newVote = votes.push();
         newVote.voteEndTime = block.timestamp + timeToVote;
         newVote.finalized = false;
+        newVote.leadingPrice = proposedPrice;
+        newVote.totalVotesForPrice[proposedPrice] = balanceOf(msg.sender);
 
         uint256 voteIndex = votes.length - 1;
         emit VoteStarted(voteIndex, proposedPrice, msg.sender);
@@ -109,7 +111,6 @@ contract MyToken is IERC20, AccessControl {
         emit Voted(voteIndex, price, balanceOf(msg.sender), msg.sender);
     }
 
-   
     function finalizeVote(uint256 voteIndex) public {
         require(voteIndex < votes.length, "Invalid vote index");
         require(votes[voteIndex].voteEndTime <= block.timestamp, "Voting period not ended yet");
