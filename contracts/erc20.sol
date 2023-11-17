@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
+// solhint-disable-next-line
 import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 
-contract MyToken is IERC20, AccessControl {
+contract MyToken is IERC20, Initializable, AccessControlUpgradeable {
     struct Vote {
         mapping(uint256 => uint256) totalVotesForPrice;
         mapping(address => uint256) votingBalance;
@@ -17,12 +19,15 @@ contract MyToken is IERC20, AccessControl {
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     uint256 public constant SECONDS_IN_A_DAY = 86400; // 24 * 60 * 60
+    uint256 public buyFeePercentage;
+    uint256 public sellFeePercentage;
     uint256 public minTokenAmountToInitiateVote;
     uint256 public minTokenAmountToVote;
     uint256 public timeToVote;
     address public owner;
     Vote[] public votes;
 
+    uint256 private _defaultPrice;
     uint256 private _totalSupply;
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
@@ -30,18 +35,22 @@ contract MyToken is IERC20, AccessControl {
     event VoteStarted(uint256 indexed voteIndex, uint256 proposedPrice, address indexed initiator);
     event Voted(uint256 indexed voteIndex, uint256 price, uint256 amount, address indexed voter);
     event VoteFinalized(uint256 indexed voteIndex, uint256 winningPrice);
+    event TokensPurchased(address indexed buyer, uint256 amount, uint256 etherSpent);
+    event TokensSold(address indexed seller, uint256 amount, uint256 etherReceived);
 
-    constructor(uint256 initialSupply, uint256 _timeToVote) {
+    function initialize(uint256 initialSupply_, uint256 timeToVote_) public initializer {
+        __AccessControl_init();
         _grantRole(ADMIN_ROLE, msg.sender);
         _setRoleAdmin(ADMIN_ROLE, ADMIN_ROLE);
 
         owner = msg.sender;
-        _totalSupply = initialSupply * 10 ** 18;
+        _totalSupply = initialSupply_ * 10 ** 18;
         _balances[msg.sender] = _totalSupply;
+        _defaultPrice = 100;
 
         minTokenAmountToInitiateVote = _totalSupply / 1000;
         minTokenAmountToVote = _totalSupply / 2000;
-        timeToVote = _timeToVote;
+        timeToVote = timeToVote_;
 
         emit Transfer(address(0), msg.sender, _totalSupply);
     }
@@ -49,6 +58,18 @@ contract MyToken is IERC20, AccessControl {
     modifier onlyAdmin() {
         require(hasRole(ADMIN_ROLE, msg.sender), "Caller is not an admin");
         _;
+    }
+
+    function setBuyFeePercentage(uint256 fee) public onlyAdmin {
+        buyFeePercentage = fee;
+    }
+
+    function setSellFeePercentage(uint256 fee) public onlyAdmin {
+        sellFeePercentage = fee;
+    }
+
+    function setTimeToVote(uint256 _timeToVote) public onlyAdmin {
+        timeToVote = _timeToVote;
     }
 
     function totalSupply() external view override returns (uint256) {
@@ -80,6 +101,36 @@ contract MyToken is IERC20, AccessControl {
         _transfer(from, to, value);
         _approve(from, msg.sender, _allowances[from][msg.sender] - value);
         return true;
+    }
+
+    function buy() public payable {
+        require(msg.value > 0, "Ether required to buy tokens");
+        uint256 tokensToBuy = calculateTokensToBuy(msg.value, buyFeePercentage);
+        _mint(msg.sender, tokensToBuy);
+        emit TokensPurchased(msg.sender, tokensToBuy, msg.value);
+    }
+
+    function sell(uint256 amount) public {
+        require(amount > 0 && _balances[msg.sender] >= amount, "Insufficient token balance");
+        uint256 etherToReturn = calculateEtherToReturn(amount, sellFeePercentage);
+        require(address(this).balance >= etherToReturn, "Insufficient contract balance");
+        _burn(msg.sender, amount);
+        payable(msg.sender).transfer(etherToReturn);
+        emit TokensSold(msg.sender, amount, etherToReturn);
+    }
+
+    function calculateTokensToBuy(uint256 etherAmount, uint256 feePercentage) private view returns (uint256) {
+        uint256 fee = (etherAmount * feePercentage) / 100;
+        uint256 netEther = etherAmount - fee;
+        uint256 latestPrice = getLatestPrice();
+        return (netEther * latestPrice);
+    }
+
+    function calculateEtherToReturn(uint256 tokenAmount, uint256 feePercentage) private view returns (uint256) {
+        uint256 fee = (tokenAmount * feePercentage) / 100;
+        uint256 netTokens = tokenAmount - fee;
+        uint256 latestPrice = getLatestPrice();
+        return (netTokens / latestPrice);
     }
 
     function startVote(uint256 proposedPrice) public {
@@ -133,10 +184,6 @@ contract MyToken is IERC20, AccessControl {
         emit VoteFinalized(voteIndex, winningPrice);
     }
 
-    function setTimeToVote(uint256 _timeToVote) public onlyAdmin {
-        timeToVote = _timeToVote;
-    }
-
     function _transfer(address sender, address recipient, uint256 amount) internal {
         require(sender != address(0), "Transfer from the zero address");
         require(recipient != address(0), "Transfer to the zero address");
@@ -159,5 +206,38 @@ contract MyToken is IERC20, AccessControl {
 
         _allowances[owner][spender] = amount;
         emit Approval(owner, spender, amount);
+    }
+
+    function _mint(address account, uint256 amount) internal {
+        require(account != address(0), "Mint to the zero address");
+        require(canParticipate(account), "Cannot buy during active voting");
+
+        _totalSupply += amount;
+        _balances[account] += amount;
+        emit Transfer(address(0), account, amount);
+    }
+
+    function _burn(address account, uint256 amount) internal {
+        require(account != address(0), "Burn from the zero address");
+        require(_balances[account] >= amount, "Burn amount exceeds balance");
+        require(canParticipate(account), "Cannot buy during active voting");
+
+        _balances[account] -= amount;
+        _totalSupply -= amount;
+        emit Transfer(account, address(0), amount);
+    }
+
+    function canParticipate(address account) private view returns (bool) {
+        if (votes.length == 0) return true;
+        Vote storage lastVote = votes[votes.length - 1];
+        return lastVote.finalized || lastVote.votingBalance[account] == 0;
+    }
+
+    function getLatestPrice() private view returns (uint256) {
+        if (votes.length == 0) {
+            return _defaultPrice;
+        }
+        Vote storage lastVote = votes[votes.length - 1];
+        return lastVote.leadingPrice;
     }
 }
