@@ -25,7 +25,8 @@ contract MyToken is IERC20, Initializable, AccessControlUpgradeable {
     uint256 public minTokenAmountToVote;
     uint256 public timeToVote;
     address public owner;
-    Vote[] public votes;
+    uint256 public currentVoteIndex;
+    Vote public currentVote;
 
     uint256 private _defaultPrice;
     uint256 private _totalSupply;
@@ -85,8 +86,8 @@ contract MyToken is IERC20, Initializable, AccessControlUpgradeable {
         return true;
     }
 
-    function allowance(address owner, address spender) external view override returns (uint256) {
-        return _allowances[owner][spender];
+    function allowance(address ownerAddress, address spender) external view override returns (uint256) {
+        return _allowances[ownerAddress][spender];
     }
 
     function approve(address spender, uint256 value) external override returns (bool) {
@@ -135,77 +136,69 @@ contract MyToken is IERC20, Initializable, AccessControlUpgradeable {
 
     function startVote(uint256 proposedPrice) public {
         require(balanceOf(msg.sender) >= minTokenAmountToInitiateVote, "Insufficient balance to initiate vote");
+        require(currentVote.finalized, "An active vote is still ongoing");
 
-        if (votes.length > 0) {
-            Vote storage lastVote = votes[votes.length - 1];
-            require(lastVote.finalized, "An active vote is still ongoing");
-        }
+        delete currentVote.totalVotesForPrice;
+        delete currentVote.votingBalance;
+        currentVote.leadingPrice = proposedPrice;
+        currentVote.maxVotingPower = balanceOf(msg.sender);
+        currentVote.voteEndTime = block.timestamp + timeToVote;
+        currentVote.finalized = false;
 
-        Vote storage newVote = votes.push();
-        newVote.voteEndTime = block.timestamp + timeToVote;
-        newVote.finalized = false;
-        newVote.leadingPrice = proposedPrice;
+        currentVote.votingBalance[msg.sender] = balanceOf(msg.sender);
+        currentVote.totalVotesForPrice[proposedPrice] = balanceOf(msg.sender);
 
-        newVote.votingBalance[msg.sender] = balanceOf(msg.sender);
-        newVote.totalVotesForPrice[proposedPrice] = balanceOf(msg.sender);
-
-        uint256 voteIndex = votes.length - 1;
-        emit VoteStarted(voteIndex, proposedPrice, msg.sender);
+        currentVoteIndex++;
+        emit VoteStarted(currentVoteIndex, proposedPrice, msg.sender);
     }
 
-    function vote(uint256 voteIndex, uint256 price) public {
+    function vote(uint256 price) public {
         uint256 voterBalance = balanceOf(msg.sender);
         require(voterBalance >= minTokenAmountToVote, "Insufficient balance to vote");
-        require(voteIndex < votes.length, "Invalid vote index");
-        require(votes[voteIndex].voteEndTime > block.timestamp, "Voting period has ended");
-        require(!votes[voteIndex].finalized, "Vote already finalized");
-        require(votes[voteIndex].votingBalance[msg.sender] == 0, "This account already participated in this voting");
+        require(currentVote.voteEndTime > block.timestamp, "Voting period has ended");
+        require(!currentVote.finalized, "Vote already finalized");
+        require(currentVote.votingBalance[msg.sender] == 0, "This account already participated in this voting");
 
-        votes[voteIndex].votingBalance[msg.sender] = voterBalance;
-        uint256 updatedVoteCountForPrice = votes[voteIndex].totalVotesForPrice[price] + voterBalance;
-        votes[voteIndex].totalVotesForPrice[price] = updatedVoteCountForPrice;
+        currentVote.votingBalance[msg.sender] = voterBalance;
+        uint256 updatedVoteCountForPrice = currentVote.totalVotesForPrice[price] + voterBalance;
+        currentVote.totalVotesForPrice[price] = updatedVoteCountForPrice;
 
-        if (updatedVoteCountForPrice > votes[voteIndex].maxVotingPower) {
-            votes[voteIndex].leadingPrice = price;
-            votes[voteIndex].maxVotingPower = updatedVoteCountForPrice;
+        if (updatedVoteCountForPrice > currentVote.maxVotingPower) {
+            currentVote.leadingPrice = price;
+            currentVote.maxVotingPower = updatedVoteCountForPrice;
         }
 
-        emit Voted(voteIndex, price, balanceOf(msg.sender), msg.sender);
+        emit Voted(currentVoteIndex, price, voterBalance, msg.sender);
     }
 
-    function finalizeVote(uint256 voteIndex) public {
-        require(voteIndex < votes.length, "Invalid vote index");
-        require(votes[voteIndex].voteEndTime <= block.timestamp, "Voting period not ended yet");
-        require(!votes[voteIndex].finalized, "Vote already finalized");
+    function finalizeVote() public {
+        require(currentVote.voteEndTime <= block.timestamp, "Voting period not ended yet");
+        require(!currentVote.finalized, "Vote already finalized");
 
-        uint256 winningPrice = votes[voteIndex].leadingPrice;
-        votes[voteIndex].finalized = true;
+        uint256 winningPrice = currentVote.leadingPrice;
+        currentVote.finalized = true;
+        _defaultPrice = currentVote.leadingPrice;
 
-        emit VoteFinalized(voteIndex, winningPrice);
+        emit VoteFinalized(currentVoteIndex, winningPrice);
     }
 
     function _transfer(address sender, address recipient, uint256 amount) internal {
         require(sender != address(0), "Transfer from the zero address");
         require(recipient != address(0), "Transfer to the zero address");
         require(balanceOf(sender) >= amount, "Transfer amount exceeds balance");
-
-        if (votes.length > 0) {
-            uint256 lastVoteIndex = votes.length - 1;
-            uint256 lockedBalance = votes[lastVoteIndex].votingBalance[sender];
-            require(balanceOf(sender) - lockedBalance >= amount, "Transfer amount exceeds uncommitted balance");
-        }
+        require(canParticipate(sender), "Cannot transfer during active voting");
 
         _balances[sender] -= amount;
         _balances[recipient] += amount;
         emit Transfer(sender, recipient, amount);
     }
 
-    function _approve(address owner, address spender, uint256 amount) internal {
-        require(owner != address(0), "Approve from the zero address");
+    function _approve(address ownerAddress, address spender, uint256 amount) internal {
+        require(ownerAddress != address(0), "Approve from the zero address");
         require(spender != address(0), "Approve to the zero address");
 
-        _allowances[owner][spender] = amount;
-        emit Approval(owner, spender, amount);
+        _allowances[ownerAddress][spender] = amount;
+        emit Approval(ownerAddress, spender, amount);
     }
 
     function _mint(address account, uint256 amount) internal {
@@ -228,16 +221,10 @@ contract MyToken is IERC20, Initializable, AccessControlUpgradeable {
     }
 
     function canParticipate(address account) private view returns (bool) {
-        if (votes.length == 0) return true;
-        Vote storage lastVote = votes[votes.length - 1];
-        return lastVote.finalized || lastVote.votingBalance[account] == 0;
+        return currentVote.finalized || currentVote.votingBalance[account] == 0;
     }
 
     function getLatestPrice() private view returns (uint256) {
-        if (votes.length == 0) {
-            return _defaultPrice;
-        }
-        Vote storage lastVote = votes[votes.length - 1];
-        return lastVote.leadingPrice;
+        return _defaultPrice;
     }
 }
