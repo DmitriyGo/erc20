@@ -27,7 +27,7 @@ describe("Voting Functionality", function () {
     const proposedPrice = BigInt("1000000000000000000");
     await expect(myToken.connect(addr1).startVote(proposedPrice))
       .to.emit(myToken, "VoteStarted")
-      .withArgs(0, proposedPrice, addr1.address);
+      .withArgs(1, proposedPrice, addr1.address);
   });
 
   it("Should allow valid voting", async function () {
@@ -42,19 +42,19 @@ describe("Voting Functionality", function () {
 
     await myToken.connect(addr1).startVote(proposedPrice);
 
-    await expect(myToken.connect(addr2).vote(0, smallerProposedPrice))
+    await expect(myToken.connect(addr2).vote(smallerProposedPrice))
       .to.emit(myToken, "Voted")
-      .withArgs(0, smallerProposedPrice, await myToken.balanceOf(addr2.address), addr2.address);
+      .withArgs(1, smallerProposedPrice, await myToken.balanceOf(addr2.address), addr2.address);
 
-    await expect(myToken.connect(addr3).vote(0, proposedPrice))
+    await expect(myToken.connect(addr3).vote(proposedPrice))
       .to.emit(myToken, "Voted")
-      .withArgs(0, proposedPrice, await myToken.balanceOf(addr3.address), addr3.address);
+      .withArgs(1, proposedPrice, await myToken.balanceOf(addr3.address), addr3.address);
 
     await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60 + 1]);
     await ethers.provider.send("evm_mine");
-    expect(await myToken.connect(addr1).finalizeVote(0))
+    expect(await myToken.connect(addr1).finalizeVote())
       .to.emit(myToken, "VoteFinalized")
-      .withArgs(0, proposedPrice);
+      .withArgs(1, proposedPrice);
   });
 
   it("Should fail to vote with insufficient balance", async function () {
@@ -63,17 +63,7 @@ describe("Voting Functionality", function () {
 
     const proposedPrice = BigInt("1000000000000000000");
     await myToken.connect(addr1).startVote(proposedPrice);
-    await expect(myToken.connect(addr2).vote(0, proposedPrice)).to.be.revertedWith("Insufficient balance to vote");
-  });
-
-  it("Should fail to vote for an invalid vote index", async function () {
-    const totalSupply = await myToken.totalSupply();
-    await myToken.transfer(addr1.address, totalSupply / 1000n);
-
-    const proposedPrice = BigInt("1000000000000000000");
-    await myToken.connect(addr1).startVote(proposedPrice);
-    const invalidVoteIndex = 999;
-    await expect(myToken.connect(addr1).vote(invalidVoteIndex, proposedPrice)).to.be.revertedWith("Invalid vote index");
+    await expect(myToken.connect(addr2).vote(proposedPrice)).to.be.revertedWith("Insufficient balance to vote");
   });
 
   it("Should fail to vote after the voting period has ended", async function () {
@@ -86,7 +76,7 @@ describe("Voting Functionality", function () {
     await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60 + 1]);
     await ethers.provider.send("evm_mine");
 
-    await expect(myToken.connect(addr1).vote(0, proposedPrice)).to.be.revertedWith("Voting period has ended");
+    await expect(myToken.connect(addr1).vote(proposedPrice)).to.be.revertedWith("Voting period has ended");
   });
 
   it("Should finalize a vote after the voting period", async function () {
@@ -98,7 +88,7 @@ describe("Voting Functionality", function () {
 
     await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60 + 1]);
     await ethers.provider.send("evm_mine");
-    await expect(myToken.connect(addr1).finalizeVote(0)).to.emit(myToken, "VoteFinalized").withArgs(0, proposedPrice);
+    await expect(myToken.connect(addr1).finalizeVote()).to.emit(myToken, "VoteFinalized").withArgs(1, proposedPrice);
   });
 
   it("Should fail to finalize a vote before the voting period ends", async function () {
@@ -107,7 +97,7 @@ describe("Voting Functionality", function () {
 
     const proposedPrice = BigInt("1000000000000000000");
     await myToken.connect(addr1).startVote(proposedPrice);
-    await expect(myToken.connect(addr1).finalizeVote(0)).to.be.revertedWith("Voting period not ended yet");
+    await expect(myToken.connect(addr1).finalizeVote()).to.be.revertedWith("Voting period not ended yet");
   });
 
   it("Should fail to finalize an already finalized vote", async function () {
@@ -119,12 +109,7 @@ describe("Voting Functionality", function () {
 
     await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60 + 1]);
     await ethers.provider.send("evm_mine");
-    await expect(myToken.connect(addr1).finalizeVote(0)).to.not.be.reverted;
-    await expect(myToken.connect(addr1).finalizeVote(0)).to.be.revertedWith("Vote already finalized");
-  });
-
-  it("should revert finalizing a vote with an invalid index", async function () {
-    const invalidVoteIndex = 999;
-    await expect(myToken.finalizeVote(invalidVoteIndex)).to.be.revertedWith("Invalid vote index");
+    await expect(myToken.connect(addr1).finalizeVote()).to.not.be.reverted;
+    await expect(myToken.connect(addr1).finalizeVote()).to.be.revertedWith("Vote already finalized");
   });
 });

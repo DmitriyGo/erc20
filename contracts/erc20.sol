@@ -8,15 +8,6 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 
 contract MyToken is IERC20, Initializable, AccessControlUpgradeable {
-    struct Vote {
-        mapping(uint256 => uint256) totalVotesForPrice;
-        mapping(address => uint256) votingBalance;
-        uint256 leadingPrice;
-        uint256 maxVotingPower;
-        uint256 voteEndTime;
-        bool finalized;
-    }
-
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     uint256 public constant SECONDS_IN_A_DAY = 86400; // 24 * 60 * 60
     uint256 public buyFeePercentage;
@@ -25,8 +16,16 @@ contract MyToken is IERC20, Initializable, AccessControlUpgradeable {
     uint256 public minTokenAmountToVote;
     uint256 public timeToVote;
     address public owner;
+
+    //Voting
+    mapping(uint256 => uint256) totalVotesForPrice;
+    mapping(address => mapping(uint256 => uint256)) votingBalance;
+    mapping(uint256 => uint256) lastRoundPriceVoted;
+    uint256 public leadingPrice;
+    uint256 public maxVotingPower;
+    uint256 public voteEndTime;
+    bool public voteFinalized;
     uint256 public currentVoteIndex;
-    Vote public currentVote;
 
     uint256 private _defaultPrice;
     uint256 private _totalSupply;
@@ -45,9 +44,10 @@ contract MyToken is IERC20, Initializable, AccessControlUpgradeable {
         _setRoleAdmin(ADMIN_ROLE, ADMIN_ROLE);
 
         owner = msg.sender;
-        _totalSupply = initialSupply_ * 10 ** 18;
+        _totalSupply = initialSupply_ * 1e18;
         _balances[msg.sender] = _totalSupply;
         _defaultPrice = 100;
+        voteFinalized = true;
 
         minTokenAmountToInitiateVote = _totalSupply / 1000;
         minTokenAmountToVote = _totalSupply / 2000;
@@ -136,50 +136,54 @@ contract MyToken is IERC20, Initializable, AccessControlUpgradeable {
 
     function startVote(uint256 proposedPrice) public {
         require(balanceOf(msg.sender) >= minTokenAmountToInitiateVote, "Insufficient balance to initiate vote");
-        require(currentVote.finalized, "An active vote is still ongoing");
+        require(voteFinalized, "An active vote is still ongoing");
+        currentVoteIndex = currentVoteIndex + 1;
 
-        delete currentVote.totalVotesForPrice;
-        delete currentVote.votingBalance;
-        currentVote.leadingPrice = proposedPrice;
-        currentVote.maxVotingPower = balanceOf(msg.sender);
-        currentVote.voteEndTime = block.timestamp + timeToVote;
-        currentVote.finalized = false;
+        leadingPrice = proposedPrice;
+        maxVotingPower = balanceOf(msg.sender);
+        voteEndTime = block.timestamp + timeToVote;
+        voteFinalized = false;
 
-        currentVote.votingBalance[msg.sender] = balanceOf(msg.sender);
-        currentVote.totalVotesForPrice[proposedPrice] = balanceOf(msg.sender);
+        votingBalance[msg.sender][currentVoteIndex] = balanceOf(msg.sender);
+        totalVotesForPrice[proposedPrice] = balanceOf(msg.sender);
+        lastRoundPriceVoted[proposedPrice] = currentVoteIndex;
 
-        currentVoteIndex++;
         emit VoteStarted(currentVoteIndex, proposedPrice, msg.sender);
     }
 
     function vote(uint256 price) public {
         uint256 voterBalance = balanceOf(msg.sender);
         require(voterBalance >= minTokenAmountToVote, "Insufficient balance to vote");
-        require(currentVote.voteEndTime > block.timestamp, "Voting period has ended");
-        require(!currentVote.finalized, "Vote already finalized");
-        require(currentVote.votingBalance[msg.sender] == 0, "This account already participated in this voting");
+        require(voteEndTime > block.timestamp, "Voting period has ended");
+        require(!voteFinalized, "Vote already finalized");
+        require(votingBalance[msg.sender][currentVoteIndex] == 0, "This account already participated in this voting");
 
-        currentVote.votingBalance[msg.sender] = voterBalance;
-        uint256 updatedVoteCountForPrice = currentVote.totalVotesForPrice[price] + voterBalance;
-        currentVote.totalVotesForPrice[price] = updatedVoteCountForPrice;
+        votingBalance[msg.sender][currentVoteIndex] = voterBalance;
 
-        if (updatedVoteCountForPrice > currentVote.maxVotingPower) {
-            currentVote.leadingPrice = price;
-            currentVote.maxVotingPower = updatedVoteCountForPrice;
+        uint256 updatedVoteCountForPrice = 0;
+        if (lastRoundPriceVoted[price] == currentVoteIndex) {
+            updatedVoteCountForPrice = totalVotesForPrice[price] + voterBalance;
+        } else {
+            updatedVoteCountForPrice = voterBalance;
+        }
+        totalVotesForPrice[price] = updatedVoteCountForPrice;
+
+        if (updatedVoteCountForPrice > maxVotingPower) {
+            leadingPrice = price;
+            maxVotingPower = updatedVoteCountForPrice;
         }
 
         emit Voted(currentVoteIndex, price, voterBalance, msg.sender);
     }
 
     function finalizeVote() public {
-        require(currentVote.voteEndTime <= block.timestamp, "Voting period not ended yet");
-        require(!currentVote.finalized, "Vote already finalized");
+        require(voteEndTime <= block.timestamp, "Voting period not ended yet");
+        require(!voteFinalized, "Vote already finalized");
 
-        uint256 winningPrice = currentVote.leadingPrice;
-        currentVote.finalized = true;
-        _defaultPrice = currentVote.leadingPrice;
+        voteFinalized = true;
+        _defaultPrice = leadingPrice;
 
-        emit VoteFinalized(currentVoteIndex, winningPrice);
+        emit VoteFinalized(currentVoteIndex, leadingPrice);
     }
 
     function _transfer(address sender, address recipient, uint256 amount) internal {
@@ -221,7 +225,7 @@ contract MyToken is IERC20, Initializable, AccessControlUpgradeable {
     }
 
     function canParticipate(address account) private view returns (bool) {
-        return currentVote.finalized || currentVote.votingBalance[account] == 0;
+        return voteFinalized || votingBalance[account][currentVoteIndex] == 0;
     }
 
     function getLatestPrice() private view returns (uint256) {
