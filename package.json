@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
+  "files": [
+    "/contracts/**/*.sol",
+    "/artifacts/contracts/*.json"
+  ],
   "scripts": {
     "test": "yarn hardhat test",
     "coverage": "yarn hardhat coverage"
@@ -20,6 +24,7 @@
     "@types/mocha": ">=9.1.0",
     "@types/node": ">=16.0.0",
     "chai": "^4.2.0",
+    "dotenv": "^16.3.1",
     "ethers": "^6.4.0",
     "hardhat": "^2.19.0",
     "hardhat-deploy-ethers": "^0.4.1",

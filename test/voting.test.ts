@@ -16,7 +16,7 @@ describe("Voting Functionality", function () {
 
   it("Should fail to start a vote with insufficient balance", async function () {
     const proposedPrice = BigInt("1000000000000000000");
-    await expect(myToken.connect(addr2).startVote(proposedPrice)).to.be.revertedWith(
+    await expect(myToken.connect(addr2).initiateVote(proposedPrice)).to.be.revertedWith(
       "Insufficient balance to initiate vote"
     );
   });
@@ -25,8 +25,8 @@ describe("Voting Functionality", function () {
     const totalSupply = await myToken.totalSupply();
     await myToken.transfer(addr1.address, totalSupply / 1000n);
     const proposedPrice = BigInt("1000000000000000000");
-    await expect(myToken.connect(addr1).startVote(proposedPrice))
-      .to.emit(myToken, "VoteStarted")
+    await expect(myToken.connect(addr1).initiateVote(proposedPrice))
+      .to.emit(myToken, "VoteInitiated")
       .withArgs(1, proposedPrice, addr1.address);
   });
 
@@ -40,7 +40,7 @@ describe("Voting Functionality", function () {
     const proposedPrice = BigInt("1000000000000000000");
     const smallerProposedPrice = BigInt("10000000000000000");
 
-    await myToken.connect(addr1).startVote(proposedPrice);
+    await myToken.connect(addr1).initiateVote(proposedPrice);
 
     await expect(myToken.connect(addr2).vote(smallerProposedPrice))
       .to.emit(myToken, "Voted")
@@ -62,8 +62,18 @@ describe("Voting Functionality", function () {
     await myToken.transfer(addr1.address, totalSupply / 1000n);
 
     const proposedPrice = BigInt("1000000000000000000");
-    await myToken.connect(addr1).startVote(proposedPrice);
+    await myToken.connect(addr1).initiateVote(proposedPrice);
     await expect(myToken.connect(addr2).vote(proposedPrice)).to.be.revertedWith("Insufficient balance to vote");
+  });
+
+  it("Should fail to vote if there is ongoing voting", async function () {
+    const totalSupply = await myToken.totalSupply();
+    await myToken.transfer(addr1.address, totalSupply / 1000n);
+    await myToken.transfer(addr2.address, totalSupply / 1000n);
+
+    const proposedPrice = BigInt("1000000000000000000");
+    await myToken.connect(addr1).initiateVote(proposedPrice);
+    await expect(myToken.connect(addr2).initiateVote(proposedPrice)).to.be.revertedWith("Active vote ongoing");
   });
 
   it("Should fail to vote after the voting period has ended", async function () {
@@ -71,7 +81,7 @@ describe("Voting Functionality", function () {
     await myToken.transfer(addr1.address, totalSupply / 1000n);
 
     const proposedPrice = BigInt("1000000000000000000");
-    await myToken.connect(addr1).startVote(proposedPrice);
+    await myToken.connect(addr1).initiateVote(proposedPrice);
 
     await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60 + 1]);
     await ethers.provider.send("evm_mine");
@@ -84,7 +94,7 @@ describe("Voting Functionality", function () {
     await myToken.transfer(addr1.address, totalSupply / 1000n);
 
     const proposedPrice = BigInt("1000000000000000000");
-    await myToken.connect(addr1).startVote(proposedPrice);
+    await myToken.connect(addr1).initiateVote(proposedPrice);
 
     await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60 + 1]);
     await ethers.provider.send("evm_mine");
@@ -96,7 +106,7 @@ describe("Voting Functionality", function () {
     await myToken.transfer(addr1.address, totalSupply / 1000n);
 
     const proposedPrice = BigInt("1000000000000000000");
-    await myToken.connect(addr1).startVote(proposedPrice);
+    await myToken.connect(addr1).initiateVote(proposedPrice);
     await expect(myToken.connect(addr1).finalizeVote()).to.be.revertedWith("Voting period not ended yet");
   });
 
@@ -105,11 +115,21 @@ describe("Voting Functionality", function () {
     await myToken.transfer(addr1.address, totalSupply / 1000n);
 
     const proposedPrice = BigInt("1000000000000000000");
-    await myToken.connect(addr1).startVote(proposedPrice);
+    await myToken.connect(addr1).initiateVote(proposedPrice);
 
     await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60 + 1]);
     await ethers.provider.send("evm_mine");
     await expect(myToken.connect(addr1).finalizeVote()).to.not.be.reverted;
     await expect(myToken.connect(addr1).finalizeVote()).to.be.revertedWith("Vote already finalized");
+  });
+
+  it("Should fail to vote twice", async function () {
+    const totalSupply = await myToken.totalSupply();
+    await myToken.transfer(addr1.address, totalSupply / 1000n);
+
+    const proposedPrice = BigInt("1000000000000000000");
+    await myToken.connect(addr1).initiateVote(proposedPrice);
+
+    await expect(myToken.connect(addr1).vote(proposedPrice)).to.be.revertedWith("Already voted this round");
   });
 });

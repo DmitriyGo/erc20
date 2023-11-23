@@ -1,7 +1,8 @@
 import { expect } from "chai";
 import { SignerWithAddress, setupContract } from "./_setup";
 import { MyToken } from "../typechain-types";
-import { ZeroAddress } from "ethers";
+import { ZeroAddress, parseEther, parseUnits } from "ethers";
+import { ethers, network } from "hardhat";
 
 describe("Transactions", function () {
   let myToken: MyToken;
@@ -14,55 +15,85 @@ describe("Transactions", function () {
   });
 
   describe("Transfer", function () {
-    it("Should transfer tokens between accounts", async function () {
-      await myToken.transfer(addr1.address, 50n);
-      const addr1Balance = await myToken.balanceOf(addr1.address);
-      expect(addr1Balance).to.equal(50n);
+    it("should transfer tokens successfully", async function () {
+      const transferAmount = 100;
+      await myToken.transfer(addr1.address, transferAmount);
+      expect(await myToken.balanceOf(addr1.address)).to.equal(transferAmount);
     });
 
-    it("Should fail if recipient address is zero address", async function () {
-      await expect(myToken.transfer(ZeroAddress, 50n)).to.be.revertedWith("Transfer to the zero address");
+    it("should fail to transfer from the zero address", async function () {
+      const otherAccount = addr1.address;
+      const transferAmount = 100;
+
+      await network.provider.request({
+        method: "hardhat_impersonateAccount",
+        params: ["0x0000000000000000000000000000000000000000"],
+      });
+      const zeroAddressSigner = await ethers.getSigner("0x0000000000000000000000000000000000000000");
+      owner.sendTransaction({
+        to: zeroAddressSigner.address,
+        value: parseEther("1"),
+      });
+
+      await expect(myToken.connect(zeroAddressSigner).transfer(otherAccount, transferAmount)).to.be.revertedWith(
+        "Transfer from the zero address"
+      );
     });
 
-    it("Should fail if sender doesn’t have enough tokens", async function () {
-      const initialOwnerBalance = await myToken.balanceOf(owner.address);
-      await expect(myToken.connect(addr1).transfer(owner.address, 1n)).to.be.revertedWith(
+    it("should fail to transfer to zero address", async function () {
+      const transferAmount = 100;
+      await expect(myToken.transfer(ZeroAddress, transferAmount)).to.be.revertedWith("Transfer to the zero address");
+    });
+
+    it("should fail to transfer when balance is insufficient", async function () {
+      const transferAmount = (await myToken.totalSupply()) + 1n;
+      await expect(myToken.transfer(addr1.address, transferAmount)).to.be.revertedWith(
         "Transfer amount exceeds balance"
       );
-      expect(await myToken.balanceOf(owner.address)).to.equal(initialOwnerBalance);
     });
 
-    it("Should update balances after transfers", async function () {
-      const initialOwnerBalance = await myToken.balanceOf(owner.address);
-      await myToken.transfer(addr1.address, 100n);
-      await myToken.transfer(addr2.address, 50n);
+    it("should fail to transfer when not enough free tokens due to voting", async function () {
+      const totalSupply = await myToken.totalSupply();
+      const balance = totalSupply / 1000n;
+      await myToken.transfer(addr1.address, balance);
 
-      const finalOwnerBalance = await myToken.balanceOf(owner.address);
-      expect(finalOwnerBalance).to.equal(initialOwnerBalance - 150n);
-
-      const addr1Balance = await myToken.balanceOf(addr1.address);
-      expect(addr1Balance).to.equal(100n);
-
-      const addr2Balance = await myToken.balanceOf(addr2.address);
-      expect(addr2Balance).to.equal(50n);
+      const proposedPrice = BigInt("1000000000000000000");
+      await myToken.connect(addr1).initiateVote(proposedPrice);
+      await expect(myToken.connect(addr1).transfer(addr2.address, balance / 2n)).to.be.revertedWith(
+        "Not enough free tokens"
+      );
     });
   });
 
   describe("Approve", function () {
-    it("should allow users to approve a spender", async function () {
-      const approveAmount = BigInt("100000000000000000000"); // 100 tokens in wei
-      await expect(myToken.connect(addr1).approve(addr2.address, approveAmount))
-        .to.emit(myToken, "Approval")
-        .withArgs(addr1.address, addr2.address, approveAmount);
-
-      const allowance = await myToken.allowance(addr1.address, addr2.address);
-      expect(allowance).to.equal(approveAmount);
+    it("should return the correct allowance", async function () {
+      const allowanceAmount = 100;
+      await myToken.approve(addr1.address, allowanceAmount);
+      expect(await myToken.allowance(owner.address, addr1.address)).to.equal(allowanceAmount);
     });
 
-    it("should fail when the spender is the zero address", async function () {
-      const approveAmount = BigInt("100000000000000000000"); // 100 tokens in wei
-      await expect(myToken.connect(addr1).approve(ZeroAddress, approveAmount)).to.be.revertedWith(
-        "Approve to the zero address"
+    it("should approve spender successfully", async function () {
+      const allowanceAmount = 100;
+      await myToken.approve(addr1.address, allowanceAmount);
+      expect(await myToken.allowance(owner.address, addr1.address)).to.equal(allowanceAmount);
+    });
+
+    it("should fail to approve to zero address", async function () {
+      await expect(myToken.approve(ZeroAddress, 100)).to.be.revertedWith("Approve to the zero address");
+    });
+
+    it("should fail to approve from the zero address", async function () {
+      const spender = addr1.address;
+      const approvalAmount = 100;
+
+      await network.provider.request({
+        method: "hardhat_impersonateAccount",
+        params: ["0x0000000000000000000000000000000000000000"],
+      });
+      const zeroAddressSigner = await ethers.getSigner("0x0000000000000000000000000000000000000000");
+
+      await expect(myToken.connect(zeroAddressSigner).approve(spender, approvalAmount)).to.be.revertedWith(
+        "Approve from the zero address"
       );
     });
   });

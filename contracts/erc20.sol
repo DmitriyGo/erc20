@@ -3,82 +3,30 @@ pragma solidity ^0.8.20;
 
 // solhint-disable-next-line
 import "hardhat/console.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import "./erc20-voting.sol";
 
-contract MyToken is IERC20, Initializable, AccessControlUpgradeable {
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
-    uint256 public constant SECONDS_IN_A_DAY = 86400; // 24 * 60 * 60
-    uint256 public buyFeePercentage;
-    uint256 public sellFeePercentage;
-    uint256 public minTokenAmountToInitiateVote;
-    uint256 public minTokenAmountToVote;
-    uint256 public timeToVote;
-    address public owner;
+contract MyToken is MyTokenVoting {
+    uint256 public buyFeePercent;
+    uint256 public sellFeePercent;
 
-    //Voting
-    mapping(uint256 => uint256) totalVotesForPrice;
-    mapping(address => mapping(uint256 => uint256)) votingBalance;
-    mapping(uint256 => uint256) lastRoundPriceVoted;
-    uint256 public leadingPrice;
-    uint256 public maxVotingPower;
-    uint256 public voteEndTime;
-    bool public voteFinalized;
-    uint256 public currentVoteIndex;
+    event TokensBought(address indexed buyer, uint256 amount, uint256 etherSpent);
+    event TokensSold(address indexed seller, uint256 amount, uint256 etherReturned);
 
-    uint256 private _defaultPrice;
-    uint256 private _totalSupply;
-    mapping(address => uint256) private _balances;
-    mapping(address => mapping(address => uint256)) private _allowances;
+    function initialize(uint256 initialSupply, uint256 votingPeriod) public override initializer {
+        MyTokenVoting.initialize(initialSupply, votingPeriod);
 
-    event VoteStarted(uint256 indexed voteIndex, uint256 proposedPrice, address indexed initiator);
-    event Voted(uint256 indexed voteIndex, uint256 price, uint256 amount, address indexed voter);
-    event VoteFinalized(uint256 indexed voteIndex, uint256 winningPrice);
-    event TokensPurchased(address indexed buyer, uint256 amount, uint256 etherSpent);
-    event TokensSold(address indexed seller, uint256 amount, uint256 etherReceived);
-
-    function initialize(uint256 initialSupply_, uint256 timeToVote_) public initializer {
-        __AccessControl_init();
-        _grantRole(ADMIN_ROLE, msg.sender);
-        _setRoleAdmin(ADMIN_ROLE, ADMIN_ROLE);
-
-        owner = msg.sender;
-        _totalSupply = initialSupply_ * 1e18;
-        _balances[msg.sender] = _totalSupply;
-        _defaultPrice = 100;
-        voteFinalized = true;
-
-        minTokenAmountToInitiateVote = _totalSupply / 1000;
-        minTokenAmountToVote = _totalSupply / 2000;
-        timeToVote = timeToVote_;
+        buyFeePercent = 3;
+        sellFeePercent = 5;
 
         emit Transfer(address(0), msg.sender, _totalSupply);
     }
 
-    modifier onlyAdmin() {
-        require(hasRole(ADMIN_ROLE, msg.sender), "Caller is not an admin");
-        _;
+    function setBuyFeePercent(uint256 fee) public onlyAdmin {
+        buyFeePercent = fee;
     }
 
-    function setBuyFeePercentage(uint256 fee) public onlyAdmin {
-        buyFeePercentage = fee;
-    }
-
-    function setSellFeePercentage(uint256 fee) public onlyAdmin {
-        sellFeePercentage = fee;
-    }
-
-    function setTimeToVote(uint256 _timeToVote) public onlyAdmin {
-        timeToVote = _timeToVote;
-    }
-
-    function totalSupply() external view override returns (uint256) {
-        return _totalSupply;
-    }
-
-    function balanceOf(address account) public view override returns (uint256) {
-        return _balances[account];
+    function setSellFeePercent(uint256 fee) public onlyAdmin {
+        sellFeePercent = fee;
     }
 
     function transfer(address to, uint256 value) external override returns (bool) {
@@ -106,14 +54,14 @@ contract MyToken is IERC20, Initializable, AccessControlUpgradeable {
 
     function buy() public payable {
         require(msg.value > 0, "Ether required to buy tokens");
-        uint256 tokensToBuy = calculateTokensToBuy(msg.value, buyFeePercentage);
+        uint256 tokensToBuy = calculateTokensToBuy(msg.value, buyFeePercent);
         _mint(msg.sender, tokensToBuy);
-        emit TokensPurchased(msg.sender, tokensToBuy, msg.value);
+        emit TokensBought(msg.sender, tokensToBuy, msg.value);
     }
 
     function sell(uint256 amount) public {
         require(amount > 0 && _balances[msg.sender] >= amount, "Insufficient token balance");
-        uint256 etherToReturn = calculateEtherToReturn(amount, sellFeePercentage);
+        uint256 etherToReturn = calculateEtherToReturn(amount, sellFeePercent);
         require(address(this).balance >= etherToReturn, "Insufficient contract balance");
         _burn(msg.sender, amount);
         payable(msg.sender).transfer(etherToReturn);
@@ -123,74 +71,20 @@ contract MyToken is IERC20, Initializable, AccessControlUpgradeable {
     function calculateTokensToBuy(uint256 etherAmount, uint256 feePercentage) private view returns (uint256) {
         uint256 fee = (etherAmount * feePercentage) / 100;
         uint256 netEther = etherAmount - fee;
-        uint256 latestPrice = getLatestPrice();
-        return (netEther * latestPrice);
+        return (netEther * defaultPrice);
     }
 
     function calculateEtherToReturn(uint256 tokenAmount, uint256 feePercentage) private view returns (uint256) {
         uint256 fee = (tokenAmount * feePercentage) / 100;
         uint256 netTokens = tokenAmount - fee;
-        uint256 latestPrice = getLatestPrice();
-        return (netTokens / latestPrice);
-    }
-
-    function startVote(uint256 proposedPrice) public {
-        require(balanceOf(msg.sender) >= minTokenAmountToInitiateVote, "Insufficient balance to initiate vote");
-        require(voteFinalized, "An active vote is still ongoing");
-        currentVoteIndex = currentVoteIndex + 1;
-
-        leadingPrice = proposedPrice;
-        maxVotingPower = balanceOf(msg.sender);
-        voteEndTime = block.timestamp + timeToVote;
-        voteFinalized = false;
-
-        votingBalance[msg.sender][currentVoteIndex] = balanceOf(msg.sender);
-        totalVotesForPrice[proposedPrice] = balanceOf(msg.sender);
-        lastRoundPriceVoted[proposedPrice] = currentVoteIndex;
-
-        emit VoteStarted(currentVoteIndex, proposedPrice, msg.sender);
-    }
-
-    function vote(uint256 price) public {
-        uint256 voterBalance = balanceOf(msg.sender);
-        require(voterBalance >= minTokenAmountToVote, "Insufficient balance to vote");
-        require(voteEndTime > block.timestamp, "Voting period has ended");
-        require(!voteFinalized, "Vote already finalized");
-        require(votingBalance[msg.sender][currentVoteIndex] == 0, "This account already participated in this voting");
-
-        votingBalance[msg.sender][currentVoteIndex] = voterBalance;
-
-        uint256 updatedVoteCountForPrice = 0;
-        if (lastRoundPriceVoted[price] == currentVoteIndex) {
-            updatedVoteCountForPrice = totalVotesForPrice[price] + voterBalance;
-        } else {
-            updatedVoteCountForPrice = voterBalance;
-        }
-        totalVotesForPrice[price] = updatedVoteCountForPrice;
-
-        if (updatedVoteCountForPrice > maxVotingPower) {
-            leadingPrice = price;
-            maxVotingPower = updatedVoteCountForPrice;
-        }
-
-        emit Voted(currentVoteIndex, price, voterBalance, msg.sender);
-    }
-
-    function finalizeVote() public {
-        require(voteEndTime <= block.timestamp, "Voting period not ended yet");
-        require(!voteFinalized, "Vote already finalized");
-
-        voteFinalized = true;
-        _defaultPrice = leadingPrice;
-
-        emit VoteFinalized(currentVoteIndex, leadingPrice);
+        return (netTokens / defaultPrice);
     }
 
     function _transfer(address sender, address recipient, uint256 amount) internal {
         require(sender != address(0), "Transfer from the zero address");
         require(recipient != address(0), "Transfer to the zero address");
         require(balanceOf(sender) >= amount, "Transfer amount exceeds balance");
-        require(canParticipate(sender), "Cannot transfer during active voting");
+        require(_canParticipate(sender, amount), "Not enough free tokens");
 
         _balances[sender] -= amount;
         _balances[recipient] += amount;
@@ -207,7 +101,6 @@ contract MyToken is IERC20, Initializable, AccessControlUpgradeable {
 
     function _mint(address account, uint256 amount) internal {
         require(account != address(0), "Mint to the zero address");
-        require(canParticipate(account), "Cannot buy during active voting");
 
         _totalSupply += amount;
         _balances[account] += amount;
@@ -217,18 +110,19 @@ contract MyToken is IERC20, Initializable, AccessControlUpgradeable {
     function _burn(address account, uint256 amount) internal {
         require(account != address(0), "Burn from the zero address");
         require(_balances[account] >= amount, "Burn amount exceeds balance");
-        require(canParticipate(account), "Cannot buy during active voting");
+        require(_canParticipate(account, amount), "Not enough free tokens");
 
         _balances[account] -= amount;
         _totalSupply -= amount;
         emit Transfer(account, address(0), amount);
     }
 
-    function canParticipate(address account) private view returns (bool) {
-        return voteFinalized || votingBalance[account][currentVoteIndex] == 0;
-    }
+    function _canParticipate(address account, uint256 amount) private view returns (bool) {
+        if (currentVote.isFinalized) {
+            return true;
+        }
 
-    function getLatestPrice() private view returns (uint256) {
-        return _defaultPrice;
+        uint256 availableBalance = _voterBalances[account][currentVoteRound];
+        return _balances[account] - amount >= availableBalance;
     }
 }
