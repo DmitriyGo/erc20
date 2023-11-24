@@ -12,7 +12,7 @@ contract MyToken is MyTokenVoting {
     event TokensBought(address indexed buyer, uint256 amount, uint256 etherSpent);
     event TokensSold(address indexed seller, uint256 amount, uint256 etherReturned);
 
-    function initialize(uint256 initialSupply, uint256 votingPeriod) public override initializer {
+    function initialize(uint256 initialSupply, uint256 votingPeriod) public virtual override initializer {
         MyTokenVoting.initialize(initialSupply, votingPeriod);
 
         buyFeePercent = 3;

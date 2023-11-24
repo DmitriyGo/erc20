@@ -1,5 +1,7 @@
 import { expect } from "chai";
+
 import { SignerWithAddress, setupContract } from "./_setup";
+
 import { MyToken } from "../typechain-types";
 
 describe("Utils", function () {

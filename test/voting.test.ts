@@ -1,23 +1,24 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
+
 import { SignerWithAddress, setupContract } from "./_setup";
+
 import { MyToken } from "../typechain-types";
 
 describe("Voting Functionality", function () {
   let myToken: MyToken;
-  let owner: SignerWithAddress;
   let addr1: SignerWithAddress;
   let addr2: SignerWithAddress;
   let addrs: SignerWithAddress[];
 
   beforeEach(async function () {
-    ({ myToken, owner, addr1, addr2, addrs } = await setupContract());
+    ({ myToken, addr1, addr2, addrs } = await setupContract());
   });
 
   it("Should fail to start a vote with insufficient balance", async function () {
     const proposedPrice = BigInt("1000000000000000000");
     await expect(myToken.connect(addr2).initiateVote(proposedPrice)).to.be.revertedWith(
-      "Insufficient balance to initiate vote"
+      "Insufficient balance to initiate vote",
     );
   });
 

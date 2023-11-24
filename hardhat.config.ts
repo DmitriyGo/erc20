@@ -1,18 +1,26 @@
 import * as dotenv from "dotenv";
 import { HardhatUserConfig } from "hardhat/config";
 
+import { getSepoliaAlchemyUrl } from "./helpers/alchemy";
+import "./tasks";
+
 import "@openzeppelin/hardhat-upgrades";
 import "@nomicfoundation/hardhat-toolbox";
-import "./tasks";
 
 dotenv.config();
 
 const config: HardhatUserConfig = {
   solidity: "0.8.20",
+  defaultNetwork: "sepolia",
   networks: {
     sepolia: {
-      url: process.env.SEPOLIA_URL,
-      accounts: process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
+      url: getSepoliaAlchemyUrl(process.env.SEPOLIA_API_KEY || ""),
+      accounts: process.env.PRIVATE_KEY !== undefined ? [`0x${process.env.PRIVATE_KEY}`] : [],
+    },
+  },
+  etherscan: {
+    apiKey: {
+      sepolia: process.env.ETHERSCAN_API_KEY || "",
     },
   },
 };

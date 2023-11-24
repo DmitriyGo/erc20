@@ -1,8 +1,10 @@
 import { expect } from "chai";
-import { SignerWithAddress, setupContract } from "./_setup";
-import { MyToken } from "../typechain-types";
-import { ZeroAddress, parseEther, parseUnits } from "ethers";
+import { ZeroAddress, parseEther } from "ethers";
 import { ethers, network } from "hardhat";
+
+import { SignerWithAddress, setupContract } from "./_setup";
+
+import { MyToken } from "../typechain-types";
 
 describe("Transactions", function () {
   let myToken: MyToken;
@@ -36,7 +38,7 @@ describe("Transactions", function () {
       });
 
       await expect(myToken.connect(zeroAddressSigner).transfer(otherAccount, transferAmount)).to.be.revertedWith(
-        "Transfer from the zero address"
+        "Transfer from the zero address",
       );
     });
 
@@ -48,7 +50,7 @@ describe("Transactions", function () {
     it("should fail to transfer when balance is insufficient", async function () {
       const transferAmount = (await myToken.totalSupply()) + 1n;
       await expect(myToken.transfer(addr1.address, transferAmount)).to.be.revertedWith(
-        "Transfer amount exceeds balance"
+        "Transfer amount exceeds balance",
       );
     });
 
@@ -60,7 +62,7 @@ describe("Transactions", function () {
       const proposedPrice = BigInt("1000000000000000000");
       await myToken.connect(addr1).initiateVote(proposedPrice);
       await expect(myToken.connect(addr1).transfer(addr2.address, balance / 2n)).to.be.revertedWith(
-        "Not enough free tokens"
+        "Not enough free tokens",
       );
     });
   });
@@ -93,7 +95,7 @@ describe("Transactions", function () {
       const zeroAddressSigner = await ethers.getSigner("0x0000000000000000000000000000000000000000");
 
       await expect(myToken.connect(zeroAddressSigner).approve(spender, approvalAmount)).to.be.revertedWith(
-        "Approve from the zero address"
+        "Approve from the zero address",
       );
     });
   });
@@ -116,7 +118,7 @@ describe("Transactions", function () {
 
       await myToken.connect(owner).approve(addr1.address, allowanceAmount);
       await expect(
-        myToken.connect(addr1).transferFrom(owner.address, addr2.address, transferAmount)
+        myToken.connect(addr1).transferFrom(owner.address, addr2.address, transferAmount),
       ).to.be.revertedWith("Insufficient allowance");
     });
 
@@ -124,7 +126,7 @@ describe("Transactions", function () {
       const transferAmount = BigInt("50000000000000000000"); // 50 tokens in wei
       await myToken.connect(owner).approve(addr1.address, transferAmount);
       await expect(myToken.connect(addr1).transferFrom(ZeroAddress, addr2.address, transferAmount)).to.be.revertedWith(
-        "Insufficient allowance"
+        "Insufficient allowance",
       );
     });
   });

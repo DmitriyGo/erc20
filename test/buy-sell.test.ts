@@ -1,16 +1,16 @@
-import { SignerWithAddress, setupContract } from "./_setup";
-import { MyToken } from "../typechain-types";
 import { parseEther, parseUnits } from "ethers";
 import { ethers, network } from "hardhat";
 
+import { SignerWithAddress, setupContract } from "./_setup";
+
+import { MyToken } from "../typechain-types";
+
 describe("Transactions", function () {
   let myToken: MyToken;
-  let owner: SignerWithAddress;
   let addr1: SignerWithAddress;
-  let addr2: SignerWithAddress;
 
   beforeEach(async function () {
-    ({ myToken, owner, addr1, addr2 } = await setupContract());
+    ({ myToken, addr1 } = await setupContract());
   });
 
   const { expect } = require("chai");
@@ -22,19 +22,12 @@ describe("Transactions", function () {
     return netEther * defaultPrice;
   }
 
-  async function calculateEtherToReturn(tokenAmount: bigint, feePercentage: bigint) {
-    const fee = (tokenAmount * feePercentage) / 100n;
-    const netTokens = tokenAmount - fee;
-    const defaultPrice = await myToken.defaultPrice();
-    return netTokens / defaultPrice;
-  }
-
   describe("buy", function () {
     it("should allow a user to buy tokens with Ether", async function () {
       const buyValue = parseEther("1"); // 1 Ether
       await expect(() => myToken.connect(addr1).buy({ value: buyValue })).to.changeEtherBalances(
         [addr1, myToken],
-        [-buyValue, buyValue]
+        [-buyValue, buyValue],
       );
 
       const tokensToBuy = await calculateTokensToBuy(buyValue, await myToken.buyFeePercent());
@@ -59,7 +52,7 @@ describe("Transactions", function () {
       await expect(() => myToken.connect(addr1).sell(sellAmount)).to.changeTokenBalances(
         myToken,
         [addr1],
-        [-sellAmount]
+        [-sellAmount],
       );
     });
 

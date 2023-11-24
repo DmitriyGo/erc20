@@ -1,7 +1,8 @@
 // setup.ts
-import { ethers, upgrades } from "hardhat";
-import { MyToken } from "../typechain-types";
 import { Signer } from "ethers";
+import { ethers, upgrades } from "hardhat";
+
+import { MyToken } from "../typechain-types";
 
 export type SignerWithAddress = Signer & { address: string };
 

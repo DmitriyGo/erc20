@@ -1,0 +1,38 @@
+{
+  "settings": {
+    "node": {
+      "tryExtensions": [".js", ".json", ".node", ".ts"],
+      "convertPath": {
+        "src/**/*.ts": ["^src/(.+?)\\.ts$", "dist/$1.js"]
+      }
+    },
+    "engines": {
+      "node": ">=10.4.0"
+    }
+  },
+  "env": {
+    "browser": false,
+    "es2021": true,
+    "mocha": true,
+    "node": true
+  },
+  "plugins": ["@typescript-eslint", "node"],
+  "extends": ["standard", "plugin:prettier/recommended", "plugin:node/recommended"],
+  "parser": "@typescript-eslint/parser",
+  "rules": {
+    "node/no-unsupported-features/es-builtins": "off",
+    "node/no-unsupported-features/es-syntax": "off",
+    "import/order": [
+      "error",
+      {
+        "alphabetize": {
+          "order": "asc",
+          "caseInsensitive": true
+        },
+        "groups": ["external", "builtin", "index", "sibling", "parent", "internal", "object"],
+        "newlines-between": "always"
+      }
+    ],
+    "camelcase": "off"
+  }
+}
