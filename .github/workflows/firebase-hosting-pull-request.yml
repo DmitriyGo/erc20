@@ -23,3 +23,4 @@ jobs:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
           firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_ERC20_COVERAGE }}'
           projectId: erc20-coverage
+          channelId: channel-${{ github.run_attempt }}
