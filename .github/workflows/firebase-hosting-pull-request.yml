@@ -1,0 +1,25 @@
+name: Deploy to Firebase Hosting on PR
+
+'on':
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build_and_preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: yarn && yarn build && yarn coverage
+      - uses: actions/upload-artifact@v3
+        with:
+          name: coverage
+          path: ./coverage
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_ERC20_COVERAGE }}'
+          projectId: erc20-coverage
