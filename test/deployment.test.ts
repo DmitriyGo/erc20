@@ -2,10 +2,10 @@ import { expect } from "chai";
 
 import { SignerWithAddress, setupContract } from "./_setup";
 
-import { MyToken } from "../typechain-types";
+import { MyTokenTradableVotes } from "../typechain-types";
 
 describe("Voting Functionality", function () {
-  let myToken: MyToken;
+  let myToken: MyTokenTradableVotes;
   let owner: SignerWithAddress;
 
   beforeEach(async function () {

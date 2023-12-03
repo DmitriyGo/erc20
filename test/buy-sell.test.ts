@@ -3,10 +3,10 @@ import { ethers, network } from "hardhat";
 
 import { SignerWithAddress, setupContract } from "./_setup";
 
-import { MyToken } from "../typechain-types";
+import { MyTokenTradableVotes } from "../typechain-types";
 
 describe("Transactions", function () {
-  let myToken: MyToken;
+  let myToken: MyTokenTradableVotes;
   let addr1: SignerWithAddress;
 
   beforeEach(async function () {

@@ -2,18 +2,18 @@
 import { Signer } from "ethers";
 import { ethers, upgrades } from "hardhat";
 
-import { MyToken } from "../typechain-types";
+import { MyTokenTradableVotes } from "../typechain-types";
 
 export type SignerWithAddress = Signer & { address: string };
 
 export async function setupContract() {
   const [owner, addr1, addr2, ...addrs] = await ethers.getSigners();
-  const myTokenFactory = await ethers.getContractFactory("MyToken", owner);
-  const totalSupply = BigInt(1000000000 * 10 ** 18); // 1 billion tokens in wei
+  const myTokenFactory = await ethers.getContractFactory("MyTokenTradableVotes", owner);
+  const totalSupply = 1e6;
   const timeToVote = 7 * 24 * 60 * 60; // 7 days in seconds
-  const myToken = (await upgrades.deployProxy(myTokenFactory, [totalSupply, timeToVote], {
-    initializer: "initialize",
-  })) as unknown as MyToken;
+  const myToken = (await upgrades.deployProxy(myTokenFactory, ["MyToken", "MTN", 18, totalSupply, timeToVote], {
+    initializer: "initialize(string,string,uint8,uint256,uint256)",
+  })) as unknown as MyTokenTradableVotes;
 
   return { myToken, owner, addr1, addr2, addrs };
 }

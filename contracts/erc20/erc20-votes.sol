@@ -3,22 +3,13 @@ pragma solidity ^0.8.20;
 
 // solhint-disable-next-line
 import "hardhat/console.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import "./erc20.sol";
 
-abstract contract MyTokenVoting is IERC20, Initializable, AccessControlUpgradeable {
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
-
-    address public owner;
+abstract contract MyTokenVotes is MyToken {
     uint256 public voteInitiationThreshold;
     uint256 public voteParticipationThreshold;
     uint256 public votingDuration;
     uint256 public defaultPrice;
-
-    uint256 internal _totalSupply;
-    mapping(address => uint256) internal _balances;
-    mapping(address => mapping(address => uint256)) internal _allowances;
 
     struct Voting {
         uint256 leadingPrice;
@@ -36,13 +27,15 @@ abstract contract MyTokenVoting is IERC20, Initializable, AccessControlUpgradeab
     event Voted(uint256 indexed voteRound, uint256 price, uint256 amount, address indexed voter);
     event VoteFinalized(uint256 indexed voteRound, uint256 winningPrice);
 
-    function initialize(uint256 initialSupply, uint256 votingPeriod) public virtual initializer {
-        __AccessControl_init();
-        _grantRole(ADMIN_ROLE, msg.sender);
-        owner = msg.sender;
+    function initialize(
+        string memory name_,
+        string memory symbol_,
+        uint8 decimals_,
+        uint256 initialSupply_,
+        uint256 votingPeriod_
+    ) public virtual initializer {
+        MyToken.initialize(name_, symbol_, decimals_, initialSupply_);
 
-        _totalSupply = initialSupply * 1e18;
-        _balances[msg.sender] = _totalSupply;
         defaultPrice = 100;
 
         currentVote = Voting({
@@ -54,26 +47,11 @@ abstract contract MyTokenVoting is IERC20, Initializable, AccessControlUpgradeab
 
         voteInitiationThreshold = _totalSupply / 1000;
         voteParticipationThreshold = _totalSupply / 2000;
-        votingDuration = votingPeriod;
-
-        emit Transfer(address(0), msg.sender, _totalSupply);
-    }
-
-    modifier onlyAdmin() {
-        require(hasRole(ADMIN_ROLE, msg.sender), "Caller is not an admin");
-        _;
+        votingDuration = votingPeriod_;
     }
 
     function setVotingDuration(uint256 newDuration) public onlyAdmin {
         votingDuration = newDuration;
-    }
-
-    function totalSupply() external view override returns (uint256) {
-        return _totalSupply;
-    }
-
-    function balanceOf(address account) public view override returns (uint256) {
-        return _balances[account];
     }
 
     function initiateVote(uint256 proposedPrice) public {

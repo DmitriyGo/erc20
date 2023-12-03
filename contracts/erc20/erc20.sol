@@ -3,126 +3,107 @@ pragma solidity ^0.8.20;
 
 // solhint-disable-next-line
 import "hardhat/console.sol";
-import "./erc20-voting.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 
-contract MyToken is MyTokenVoting {
-    uint256 public buyFeePercent;
-    uint256 public sellFeePercent;
+abstract contract MyToken is IERC20, IERC20Metadata, Initializable, AccessControlUpgradeable {
+    mapping(address => uint256) internal _balances;
+    mapping(address => mapping(address => uint256)) internal _allowances;
 
-    event TokensBought(address indexed buyer, uint256 amount, uint256 etherSpent);
-    event TokensSold(address indexed seller, uint256 amount, uint256 etherReturned);
+    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
+    address public owner;
 
-    function initialize(uint256 initialSupply, uint256 votingPeriod) public virtual override initializer {
-        MyTokenVoting.initialize(initialSupply, votingPeriod);
+    uint256 internal _totalSupply;
+    string internal _name;
+    string internal _symbol;
+    uint8 internal _decimals;
 
-        buyFeePercent = 3;
-        sellFeePercent = 5;
+    function initialize(
+        string memory name_,
+        string memory symbol_,
+        uint8 decimals_,
+        uint256 initialSupply_
+    ) public virtual initializer {
+        __AccessControl_init();
+        _grantRole(ADMIN_ROLE, msg.sender);
+        owner = msg.sender;
 
+        (_name, _symbol, _decimals) = (name_, symbol_, decimals_);
+
+        _totalSupply = initialSupply_ * (10 ** _decimals);
+        _balances[msg.sender] = _totalSupply;
         emit Transfer(address(0), msg.sender, _totalSupply);
     }
 
-    function setBuyFeePercent(uint256 fee) public onlyAdmin {
-        buyFeePercent = fee;
+    modifier onlyAdmin() {
+        require(hasRole(ADMIN_ROLE, msg.sender), "Caller is not an admin");
+        _;
     }
 
-    function setSellFeePercent(uint256 fee) public onlyAdmin {
-        sellFeePercent = fee;
+    function name() public view override returns (string memory) {
+        return _name;
     }
 
-    function transfer(address to, uint256 value) external override returns (bool) {
-        _transfer(msg.sender, to, value);
+    function symbol() public view override returns (string memory) {
+        return _symbol;
+    }
+
+    function decimals() public view override returns (uint8) {
+        return _decimals;
+    }
+
+    function totalSupply() public view override returns (uint256) {
+        return _totalSupply;
+    }
+
+    function balanceOf(address account) public view override returns (uint256) {
+        return _balances[account];
+    }
+
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        _transfer(msg.sender, to, amount);
         return true;
     }
 
-    function allowance(address ownerAddress, address spender) external view override returns (uint256) {
-        return _allowances[ownerAddress][spender];
+    function allowance(address owner, address spender) public view override returns (uint256) {
+        return _allowances[owner][spender];
     }
 
-    function approve(address spender, uint256 value) external override returns (bool) {
-        _approve(msg.sender, spender, value);
+    function approve(address spender, uint256 amount) public override returns (bool) {
+        _approve(msg.sender, spender, amount);
         return true;
     }
 
-    function transferFrom(address from, address to, uint256 value) external override returns (bool) {
-        uint256 allowed = _allowances[from][msg.sender];
-        require(allowed >= value, "Insufficient allowance");
+    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
+        uint256 currentAllowance = allowance(from, msg.sender);
+        require(currentAllowance >= amount, "Insufficient allowance");
 
-        _transfer(from, to, value);
-        _approve(from, msg.sender, _allowances[from][msg.sender] - value);
+        _approve(from, msg.sender, currentAllowance - amount);
+        _transfer(from, to, amount);
+
         return true;
     }
 
-    function buy() public payable {
-        require(msg.value > 0, "Ether required to buy tokens");
-        uint256 tokensToBuy = calculateTokensToBuy(msg.value, buyFeePercent);
-        _mint(msg.sender, tokensToBuy);
-        emit TokensBought(msg.sender, tokensToBuy, msg.value);
-    }
-
-    function sell(uint256 amount) public {
-        require(amount > 0 && _balances[msg.sender] >= amount, "Insufficient token balance");
-        uint256 etherToReturn = calculateEtherToReturn(amount, sellFeePercent);
-        require(address(this).balance >= etherToReturn, "Insufficient contract balance");
-        _burn(msg.sender, amount);
-        payable(msg.sender).transfer(etherToReturn);
-        emit TokensSold(msg.sender, amount, etherToReturn);
-    }
-
-    function calculateTokensToBuy(uint256 etherAmount, uint256 feePercentage) private view returns (uint256) {
-        uint256 fee = (etherAmount * feePercentage) / 100;
-        uint256 netEther = etherAmount - fee;
-        return (netEther * defaultPrice);
-    }
-
-    function calculateEtherToReturn(uint256 tokenAmount, uint256 feePercentage) private view returns (uint256) {
-        uint256 fee = (tokenAmount * feePercentage) / 100;
-        uint256 netTokens = tokenAmount - fee;
-        return (netTokens / defaultPrice);
-    }
-
-    function _transfer(address sender, address recipient, uint256 amount) internal {
-        require(sender != address(0), "Transfer from the zero address");
-        require(recipient != address(0), "Transfer to the zero address");
-        require(balanceOf(sender) >= amount, "Transfer amount exceeds balance");
-        require(_canParticipate(sender, amount), "Not enough free tokens");
-
-        _balances[sender] -= amount;
-        _balances[recipient] += amount;
-        emit Transfer(sender, recipient, amount);
-    }
-
-    function _approve(address ownerAddress, address spender, uint256 amount) internal {
-        require(ownerAddress != address(0), "Approve from the zero address");
+    function _approve(address owner, address spender, uint256 amount) internal virtual {
+        require(owner != address(0), "Approve from the zero address");
         require(spender != address(0), "Approve to the zero address");
 
-        _allowances[ownerAddress][spender] = amount;
-        emit Approval(ownerAddress, spender, amount);
+        _allowances[owner][spender] = amount;
+
+        emit Approval(owner, spender, amount);
     }
 
-    function _mint(address account, uint256 amount) internal {
-        require(account != address(0), "Mint to the zero address");
+    function _transfer(address from, address to, uint256 amount) internal virtual {
+        require(from != address(0), "Transfer from the zero address");
+        require(to != address(0), "Transfer to the zero address");
+        uint256 balanceFrom = _balances[from];
+        require(balanceFrom >= amount, "Transfer amount exceeds balance");
 
-        _totalSupply += amount;
-        _balances[account] += amount;
-        emit Transfer(address(0), account, amount);
-    }
+        _balances[from] = balanceFrom - amount;
+        _balances[to] += amount;
 
-    function _burn(address account, uint256 amount) internal {
-        require(account != address(0), "Burn from the zero address");
-        require(_balances[account] >= amount, "Burn amount exceeds balance");
-        require(_canParticipate(account, amount), "Not enough free tokens");
-
-        _balances[account] -= amount;
-        _totalSupply -= amount;
-        emit Transfer(account, address(0), amount);
-    }
-
-    function _canParticipate(address account, uint256 amount) private view returns (bool) {
-        if (currentVote.isFinalized) {
-            return true;
-        }
-
-        uint256 availableBalance = _voterBalances[account][currentVoteRound];
-        return _balances[account] - amount >= availableBalance;
+        emit Transfer(from, to, amount);
     }
 }

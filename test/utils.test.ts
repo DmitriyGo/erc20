@@ -2,15 +2,23 @@ import { expect } from "chai";
 
 import { SignerWithAddress, setupContract } from "./_setup";
 
-import { MyToken } from "../typechain-types";
+import { MyTokenTradableVotes } from "../typechain-types";
 
 describe("Utils", function () {
-  let myToken: MyToken;
+  let myToken: MyTokenTradableVotes;
   let owner: SignerWithAddress;
   let addr1: SignerWithAddress;
 
   beforeEach(async function () {
     ({ myToken, owner, addr1 } = await setupContract());
+  });
+
+  it("should return token's name", async function () {
+    expect(await myToken.name()).to.equal("MyToken");
+  });
+
+  it("should return token's decimals", async function () {
+    expect(await myToken.decimals()).to.equal(18);
   });
 
   it("should allow only admin to set time to vote", async function () {
