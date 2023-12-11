@@ -133,4 +133,25 @@ describe("Voting Functionality", function () {
 
     await expect(myToken.connect(addr1).vote(proposedPrice)).to.be.revertedWith("Already voted this round");
   });
+
+  it("Should handle high volume of votes without failure", async function () {
+    const numberOfVoters = 10000;
+    const voters = addrs.slice(0, numberOfVoters);
+    const proposedPrice = BigInt("1000000000000000000");
+    const totalSupply = await myToken.totalSupply();
+    const voteParticipationThreshold = totalSupply / 1000n;
+
+    for (const voter of voters) {
+      await myToken.transfer(voter.address, voteParticipationThreshold);
+    }
+
+    await myToken.transfer(addr1.address, totalSupply / 1000n);
+    await myToken.connect(addr1).initiateVote(proposedPrice);
+
+    for (const voter of voters) {
+      await expect(myToken.connect(voter).vote(proposedPrice))
+        .to.emit(myToken, "Voted")
+        .withArgs(1, proposedPrice, voteParticipationThreshold, voter.address);
+    }
+  });
 });

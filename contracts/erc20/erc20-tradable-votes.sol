@@ -33,14 +33,14 @@ contract MyTokenTradableVotes is MyTokenVotes {
         sellFeePercent = fee;
     }
 
-    function buy() public payable {
+    function buy() public payable nonReentrant {
         require(msg.value > 0, "Ether required to buy tokens");
         uint256 tokensToBuy = calculateTokensToBuy(msg.value, buyFeePercent);
         _mint(msg.sender, tokensToBuy);
         emit TokensBought(msg.sender, tokensToBuy, msg.value);
     }
 
-    function sell(uint256 amount) public {
+    function sell(uint256 amount) public nonReentrant {
         require(amount > 0 && _balances[msg.sender] >= amount, "Insufficient token balance");
         uint256 etherToReturn = calculateEtherToReturn(amount, sellFeePercent);
         require(address(this).balance >= etherToReturn, "Insufficient contract balance");

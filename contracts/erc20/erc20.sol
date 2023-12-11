@@ -20,6 +20,10 @@ abstract contract MyToken is IERC20, IERC20Metadata, Initializable, AccessContro
     string internal _symbol;
     uint8 internal _decimals;
 
+    uint256 private _status;
+    uint256 private constant _NOT_ENTERED = 1;
+    uint256 private constant _ENTERED = 2;
+
     function initialize(
         string memory name_,
         string memory symbol_,
@@ -32,6 +36,7 @@ abstract contract MyToken is IERC20, IERC20Metadata, Initializable, AccessContro
 
         (_name, _symbol, _decimals) = (name_, symbol_, decimals_);
 
+        _status = _NOT_ENTERED;
         _totalSupply = initialSupply_ * (10 ** _decimals);
         _balances[msg.sender] = _totalSupply;
         emit Transfer(address(0), msg.sender, _totalSupply);
@@ -40,6 +45,13 @@ abstract contract MyToken is IERC20, IERC20Metadata, Initializable, AccessContro
     modifier onlyAdmin() {
         require(hasRole(ADMIN_ROLE, msg.sender), "Caller is not an admin");
         _;
+    }
+
+    modifier nonReentrant() {
+        require(_status != _ENTERED, "Reentrant call");
+        _status = _ENTERED;
+        _;
+        _status = _NOT_ENTERED;
     }
 
     function name() public view override returns (string memory) {
@@ -86,7 +98,7 @@ abstract contract MyToken is IERC20, IERC20Metadata, Initializable, AccessContro
         return true;
     }
 
-    function _approve(address owner, address spender, uint256 amount) internal virtual {
+    function _approve(address owner, address spender, uint256 amount) internal virtual nonReentrant {
         require(owner != address(0), "Approve from the zero address");
         require(spender != address(0), "Approve to the zero address");
 
@@ -95,7 +107,7 @@ abstract contract MyToken is IERC20, IERC20Metadata, Initializable, AccessContro
         emit Approval(owner, spender, amount);
     }
 
-    function _transfer(address from, address to, uint256 amount) internal virtual {
+    function _transfer(address from, address to, uint256 amount) internal virtual nonReentrant {
         require(from != address(0), "Transfer from the zero address");
         require(to != address(0), "Transfer to the zero address");
         uint256 balanceFrom = _balances[from];
