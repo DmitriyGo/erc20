@@ -1,8 +1,7 @@
 import { expect } from "chai";
 
-import { SignerWithAddress, setupContract } from "./_setup";
-
-import { MyTokenTradableVotes } from "../typechain-types";
+import { MyTokenTradableVotes } from "../../typechain-types";
+import { SignerWithAddress, setupContract } from "../_setup";
 
 describe("Utils", function () {
   let myToken: MyTokenTradableVotes;

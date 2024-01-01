@@ -2,9 +2,8 @@ import { expect } from "chai";
 import { parseUnits } from "ethers";
 import { ethers, network } from "hardhat";
 
-import { SignerWithAddress, setupContract } from "./_setup";
-
-import { MyTokenTradableVotes, ReentrantAttacker } from "../typechain-types";
+import { MyTokenTradableVotes, ReentrantAttacker } from "../../typechain-types";
+import { SignerWithAddress, setupContract } from "../_setup";
 
 describe("Reentrancy Attack on Sell Function", function () {
   let myToken: MyTokenTradableVotes;

@@ -1,9 +1,8 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 
-import { SignerWithAddress, setupContract } from "./_setup";
-
-import { MyTokenTradableVotes } from "../typechain-types";
+import { MyTokenTradableVotes } from "../../typechain-types";
+import { SignerWithAddress, setupContract } from "../_setup";
 
 describe("Voting Functionality", function () {
   let myToken: MyTokenTradableVotes;
