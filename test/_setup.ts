@@ -2,7 +2,12 @@
 import { Signer } from "ethers";
 import { ethers, upgrades } from "hardhat";
 
-import { MyTokenTradableVotes, VestingContract, VestingMerkleContract } from "../typechain-types";
+import {
+  MyTokenTradableVotes,
+  VestingContract,
+  VestingMerkleContract,
+  VestingSignatureContract,
+} from "../typechain-types";
 
 export type SignerWithAddress = Signer & { address: string };
 
@@ -19,6 +24,9 @@ export async function setupContract() {
   const vestingMerkle = (await ethers.deployContract("VestingMerkleContract", [
     myToken,
   ])) as unknown as VestingMerkleContract;
+  const vestingSignature = (await ethers.deployContract("VestingSignatureContract", [
+    myToken,
+  ])) as unknown as VestingSignatureContract;
 
-  return { myToken, vesting, vestingMerkle, owner, addr1, addr2, addrs };
+  return { myToken, vesting, vestingMerkle, vestingSignature, owner, addr1, addr2, addrs };
 }

@@ -79,8 +79,8 @@ abstract contract MyToken is IERC20, IERC20Metadata, Initializable, AccessContro
         return true;
     }
 
-    function allowance(address owner, address spender) public view override returns (uint256) {
-        return _allowances[owner][spender];
+    function allowance(address _owner, address spender) public view override returns (uint256) {
+        return _allowances[_owner][spender];
     }
 
     function approve(address spender, uint256 amount) public override returns (bool) {
@@ -98,13 +98,13 @@ abstract contract MyToken is IERC20, IERC20Metadata, Initializable, AccessContro
         return true;
     }
 
-    function _approve(address owner, address spender, uint256 amount) internal virtual nonReentrant {
-        require(owner != address(0), "Approve from the zero address");
+    function _approve(address _owner, address spender, uint256 amount) internal virtual nonReentrant {
+        require(_owner != address(0), "Approve from the zero address");
         require(spender != address(0), "Approve to the zero address");
 
-        _allowances[owner][spender] = amount;
+        _allowances[_owner][spender] = amount;
 
-        emit Approval(owner, spender, amount);
+        emit Approval(_owner, spender, amount);
     }
 
     function _transfer(address from, address to, uint256 amount) internal virtual nonReentrant {
